@@ -6,6 +6,34 @@ import ResultCard from "@/components/ResultCard";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import type { AnalysisResult } from "@/types";
 
+// Resize and compress image to stay within Vercel's 4.5MB body limit
+function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1600;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
+        else { width = Math.round((width * MAX) / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => resolve(blob ? new File([blob], file.name, { type: "image/jpeg" }) : file),
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -19,8 +47,9 @@ export default function Home() {
     setResult(null);
 
     try {
+      const compressed = await compressImage(file);
       const formData = new FormData();
-      formData.append("image", file);
+      formData.append("image", compressed);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
