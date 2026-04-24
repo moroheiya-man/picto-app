@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
+export const runtime = "edge";
+export const maxDuration = 30;
+
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// System prompt is cached via cache_control for repeated requests
 const SYSTEM_PROMPT = `あなたは海外旅行中の日本人旅行者をサポートするプロフェッショナルなAIガイドです。
 送られた写真を見て、その内容を日本語で詳しく解説してください。
 
@@ -75,6 +77,17 @@ function toSupportedMediaType(type: string): SupportedMediaType {
   return "image/jpeg";
 }
 
+// Edge-compatible base64 encoding (no Buffer)
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -89,18 +102,12 @@ export async function POST(request: NextRequest) {
 
     const mediaType = toSupportedMediaType(imageFile.type);
     const arrayBuffer = await imageFile.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const base64 = arrayBufferToBase64(arrayBuffer);
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
+      system: SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
@@ -131,7 +138,6 @@ export async function POST(request: NextRequest) {
     try {
       result = JSON.parse(textBlock.text);
     } catch {
-      // Fallback: extract JSON if wrapped in markdown
       const match = textBlock.text.match(/\{[\s\S]*\}/);
       if (match) {
         result = JSON.parse(match[0]);
@@ -146,20 +152,28 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof Anthropic.AuthenticationError) {
       return NextResponse.json(
-        { error: "APIキーが無効です。.env.localの設定を確認してください。" },
+        { error: "APIキーが無効です。設定を確認してください。" },
         { status: 401 }
       );
     }
-
     if (error instanceof Anthropic.RateLimitError) {
       return NextResponse.json(
-        { error: "リクエスト制限に達しました。しばらくしてから再試行してください。" },
+        { error: "リクエストが集中しています。少し待ってから再試行してください。" },
         { status: 429 }
       );
     }
+    if (error instanceof Anthropic.APIError) {
+      const msg = error.message ?? "";
+      if (msg.includes("Could not process image")) {
+        return NextResponse.json(
+          { error: "この画像フォーマットは解析できません。JPEGまたはPNG形式でお試しください。" },
+          { status: 422 }
+        );
+      }
+    }
 
     return NextResponse.json(
-      { error: `解析失敗: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "解析に失敗しました。別の写真でお試しください。" },
       { status: 500 }
     );
   }
