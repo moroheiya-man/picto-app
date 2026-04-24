@@ -139,9 +139,22 @@ export default function Home() {
 
         {/* Error message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-            <p className="text-red-700 text-sm font-medium">⚠️ エラー</p>
-            <p className="text-red-600 text-sm mt-1">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+            <div className="flex gap-2">
+              <span className="text-xl flex-shrink-0">
+                {error.includes("読み込め") || error.includes("形式") ? "📁"
+                  : error.includes("集中") || error.includes("待って") ? "⏳"
+                  : error.includes("認証") ? "🔑"
+                  : "📷"}
+              </span>
+              <p className="text-red-700 text-sm font-medium leading-relaxed">{error}</p>
+            </div>
+            <button
+              onClick={handleAnalyze}
+              className="w-full py-2.5 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-medium rounded-xl transition-colors"
+            >
+              🔄 もう一度試す
+            </button>
           </div>
         )}
 

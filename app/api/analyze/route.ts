@@ -152,13 +152,13 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof Anthropic.AuthenticationError) {
       return NextResponse.json(
-        { error: "APIキーが無効です。設定を確認してください。" },
+        { error: "APIキーの認証に失敗しました。アプリの設定を確認してください。" },
         { status: 401 }
       );
     }
     if (error instanceof Anthropic.RateLimitError) {
       return NextResponse.json(
-        { error: "リクエストが集中しています。少し待ってから再試行してください。" },
+        { error: "アクセスが集中しています。30秒ほど待ってからもう一度お試しください。" },
         { status: 429 }
       );
     }
@@ -166,14 +166,26 @@ export async function POST(request: NextRequest) {
       const msg = error.message ?? "";
       if (msg.includes("Could not process image")) {
         return NextResponse.json(
-          { error: "この画像フォーマットは解析できません。JPEGまたはPNG形式でお試しください。" },
+          { error: "この画像は読み込めませんでした。スクリーンショットや別の写真アプリで撮り直してみてください。JPEGまたはPNG形式が最適です。" },
           { status: 422 }
         );
       }
+      if (msg.includes("image") && msg.includes("size")) {
+        return NextResponse.json(
+          { error: "画像が大きすぎます。カメラアプリで撮り直すか、解像度を下げて再試行してください。" },
+          { status: 413 }
+        );
+      }
+    }
+    if (error instanceof Error && error.message.includes("JSONのパースに失敗")) {
+      return NextResponse.json(
+        { error: "AIの回答を解析できませんでした。もう一度試すと改善することがあります。" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
-      { error: "解析に失敗しました。別の写真でお試しください。" },
+      { error: "解析中に予期しないエラーが発生しました。写真を変えて再試行するか、しばらく時間をおいてください。" },
       { status: 500 }
     );
   }
