@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "画像の解析に失敗しました。もう一度お試しください。" },
+      { error: `解析失敗: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 }
     );
   }
